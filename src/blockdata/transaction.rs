@@ -25,6 +25,7 @@
 
 use std::default::Default;
 use std::{fmt, io};
+use std::collections::HashSet;
 
 use hashes::{self, sha256d, Hash};
 use hashes::hex::FromHex;
@@ -212,6 +213,21 @@ impl Default for TxIn {
             witness: Vec::new(),
         }
     }
+}
+
+/// Test where TxIns are duplicate or not
+pub fn are_inputs_duplicate<'a, T>(inputs: T) -> bool 
+    where T: Iterator<Item = &'a TxIn>,
+{
+    let mut set = HashSet::new();
+
+    for input in inputs {
+        if !set.insert(input.previous_output) {
+            return true;
+        }
+    }
+
+    false
 }
 
 /// A transaction output, which defines new coins to be created from old ones.
@@ -429,6 +445,11 @@ impl Transaction {
             }
         }
         Ok(())
+    }
+
+    /// Check whether transaction has duplicate inputs
+    pub fn has_duplicate_inputs(&self) -> bool {
+        are_inputs_duplicate(self.input.iter())
     }
 
     /// Is this a coin base transaction?
@@ -726,6 +747,55 @@ mod tests {
 
         let reser = serialize(&tx);
         assert_eq!(hex_tx, reser);
+    }
+
+    #[test]
+    fn tx_no_duplicate_inputs() {
+        // txid: 8a3d4c3f8e1bdd1dc34b9538b959ca87e84cef3666879006e144d2517159d83e
+        let hex_tx = Vec::<u8>::from_hex(
+            "01000000000101a48737c6d12722529be3c1cf5831efd1e0193b3a7363be5f1f90b6d961dd313a000000000\
+            0ffffffff02005ed0b20000000017a914b66da57242a7719674402a3ee02a329d1e8d9913870070a93b00000\
+            00022002088e2e40cd889901733cb2f922be01199d334f3232a34cffee6143482d8eb6c19040047304402204\
+            b2e6b5b88ed12720cb4f53b0a10741eccd85f41106edcc70eef1c73fc8171020220273affc2ac5695b1ff50e\
+            cefa68c8be8783d749580988a7b910f0e794a6655ae01473044022075d7f5043ec980cc1e615613dfb86385a\
+            5620cac126c6b058b1901268323f10a02200aa9748c66249ffd3e0c9adf6b558a8b951ac662afc7befb72aa6\
+            0cd2d9221a8016952210309cc9186e5902e524c11a729e8cfa75a053d25004054726c0be8d05bce7adbca210\
+            32b8b5f18cfcd5c5832ce8e6391343d4a4d9d83de70ea7adbbc4423abc049a39c2103c96d495bfdd5ba4145e\
+            3e046fee45e84a8a48ad05bd8dbb395c011a32cf9f88053ae00000000"
+        ).unwrap();
+        let tx: Transaction = deserialize(&hex_tx).expect("deserialize tx");
+
+        assert_eq!(tx.input.len(), 1);
+        assert_eq!(tx.output.len(), 2);
+        assert_eq!(false, tx.has_duplicate_inputs());
+    }
+
+    #[test]
+    fn tx_duplicate_inputs() {
+        // txid: 9a0210b2ec1eb23c50a46fcd983425dca25fc7b67627c3a480b71e8f1cd2b8d6
+        let hex_tx = Vec::<u8>::from_hex(
+            "02000000041ca800ef8d8fbbaca5cfeae6131103640912be9772b2c33e0c46eb2f86c318d1000000006a473\
+            04402200e957e0aadd507c70fc00594f9c789eeff15aa02f8d85883094cf39396d846fa022027b522a78cbcd\
+            efaa46889f8f8b74da64258a946066d1535b8216a870323a2c2012103ee04984f0bc867122fb699b9974fa58\
+            71e89ce4e7670ad8be3f0fe67e56695c0feffffff1ca800ef8d8fbbaca5cfeae6131103640912be9772b2c33\
+            e0c46eb2f86c318d1000000006a473044022075d2b7dc8b3c8c37b52bf196a89f8ce7167723eb2eb755af77f\
+            a961d37d808ad02204b217bdd6ee69d4ae4310e1dd8b884217f0ef2a834754dad56c27d1c7d65a7cb0121031\
+            7a43f1287a9bc5590fdc481eceb5e2dca5515ab3ab7a425a1fe2fc1b9c6396cfeffffff100a985881a88b683\
+            409bded961b35d7af06fec1f897d75843f9109fe6cc7f4b010000006a47304402206c84ca4cfa4d19a94aadd\
+            31d51ab7ce9e06e3f634188dc61a31268922ba241a202204af4af5627799437ca90afb0380f602604105489f\
+            9024c17ac664bedee915aa30121026a43d9a1d2391aefb927f5c79c2a610dac8c1b492a959aa5f9306928703\
+            60b7efefffffff56702c98e96af463d98bd941a19618ae6eacf49c80fa808f1b3e101fabb2432000000006b4\
+            830450221008eb77c5a4c9d5ef06abf82cf724a595d57da10b0056f71d530826faa3c0386b302200a88654fe\
+            78abf41a88869b75e6a44d467e0e00217c7dc2b3f545dd5eb14c3c50121029b6b873ff7477c8579d4757fcc4\
+            17d027f4b7dd919920091fbd934535ef5b949feffffff025ab40f000000000017a91478b204f5e7fb6aa64ce\
+            2b4ff0ccb2fac51a6702f8741360d00000000001976a914b960c846f9ea3610c2e294c519c6caee6867aaa68\
+            8acdc460900"
+        ).unwrap();
+        let tx: Transaction = deserialize(&hex_tx).expect("deserialize tx");
+
+        assert_eq!(tx.input.len(), 4);
+        assert_eq!(tx.output.len(), 2);
+        assert_eq!(true, tx.has_duplicate_inputs());
     }
 
     #[test]
