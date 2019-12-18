@@ -220,6 +220,9 @@ pub fn are_inputs_duplicate<'a, T>(inputs: T) -> bool
     where T: Iterator<Item = &'a TxIn>,
 {
     let mut set = HashSet::new();
+    let sizes = inputs.size_hint(); 
+    let size = sizes.1.unwrap_or(sizes.0); 
+    set.reserve(size);
 
     for input in inputs {
         if !set.insert(input.previous_output) {
@@ -640,6 +643,7 @@ impl SigHashType {
 
 #[cfg(test)]
 mod tests {
+    extern crate test;
     use super::{OutPoint, ParseOutPointError, Transaction, TxIn};
 
     use std::str::FromStr;
@@ -650,6 +654,10 @@ mod tests {
 
     use hashes::{sha256d, Hash};
     use hashes::hex::FromHex;
+    use self::test::Bencher;
+    use secp256k1::rand::{Rng, SeedableRng};
+    use secp256k1::rand::Isaac64Rng;
+    use blockdata::transaction::are_inputs_duplicate;
 
     #[test]
     fn test_outpoint() {
@@ -671,7 +679,7 @@ mod tests {
                    Err(ParseOutPointError::Txid(sha256d::Hash::from_hex("5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c945X").unwrap_err())));
         assert_eq!(OutPoint::from_str("5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456:lol"),
                    Err(ParseOutPointError::Vout(u32::from_str("lol").unwrap_err())));
- 
+
         assert_eq!(OutPoint::from_str("5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456:42"),
                    Ok(OutPoint{
                        txid: sha256d::Hash::from_hex("5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456").unwrap(),
@@ -796,6 +804,34 @@ mod tests {
         assert_eq!(tx.input.len(), 4);
         assert_eq!(tx.output.len(), 2);
         assert_eq!(true, tx.has_duplicate_inputs());
+    }
+
+    /// rustup run nightly cargo bench blockdata::transaction::tests::bench_duplicate_inputs
+    #[bench]
+    fn bench_duplicate_inputs(b: &mut Bencher) {
+        let mut rng = Isaac64Rng::from_seed([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+
+        let mut vec = Vec::new();
+
+        for _n in 1..100000 {
+            let random_bytes = rng.gen::<[u8; 32]>();
+
+            let txin = TxIn {
+                previous_output: OutPoint{
+                    txid: sha256d::Hash::from_slice(&random_bytes).unwrap(),
+                    vout: 0,
+                },
+                script_sig: Script::new(),
+                sequence: 0xFFFFFF,
+                witness: Vec::new()
+            };
+            
+            vec.push(txin.clone());
+        }
+
+        b.iter(|| {
+            are_inputs_duplicate(vec.iter());
+        });
     }
 
     #[test]
