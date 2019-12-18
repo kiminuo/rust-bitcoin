@@ -771,7 +771,7 @@ mod tests {
 
         let mut vec = Vec::new();
 
-        for _n in 1..32 {
+        for _n in 1..64 {
             let random_bytes = rng.gen::<[u8; 32]>();
 
             let txin = TxIn {
